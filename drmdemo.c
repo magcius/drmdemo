@@ -26,24 +26,20 @@ typedef struct {
   Buffer *buffer;
 
   int time;
+
+  cairo_surface_t *surface;
+  cairo_t *cr;
 } AppData;
 
 static void
 draw_on_buffer (AppData *appdata)
 {
-  cairo_surface_t *surface, *craig;
-  cairo_t *cr;
+  cairo_surface_t *craig;
+  cairo_t *cr = appdata->cr;
   RsvgHandle *tiger_handle;
   GError *error = NULL;
 
-  Buffer *buffer = appdata->buffer;
-
-  surface = cairo_image_surface_create_for_data (buffer->pixels,
-                                                 CAIRO_FORMAT_ARGB32,
-                                                 buffer->width,
-                                                 buffer->height,
-                                                 buffer->stride);
-  cr = cairo_create (surface);
+  cairo_save (cr);
 
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
@@ -72,8 +68,7 @@ draw_on_buffer (AppData *appdata)
       g_object_unref (tiger_handle);
     }
 
-  cairo_destroy (cr);
-  cairo_surface_destroy (surface);
+  cairo_restore (cr);
 
   ++appdata->time;
 }
@@ -122,6 +117,13 @@ main (int argc, char **argv)
       goto out;
     }
 
+  appdata.surface = cairo_image_surface_create_for_data (buffer.pixels,
+                                                         CAIRO_FORMAT_ARGB32,
+                                                         buffer.width,
+                                                         buffer.height,
+                                                         buffer.stride);
+  appdata.cr = cairo_create (appdata.surface);
+
   g_idle_add ((GSourceFunc) draw_on_buffer, &appdata);
   g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
   g_main_loop_run (mainloop);
@@ -138,5 +140,9 @@ main (int argc, char **argv)
  out:
   buffer_free (&buffer);
   device_free (&device);
+
+  cairo_destroy (appdata.cr);
+  cairo_surface_destroy (appdata.surface);
+
   return ret;
 }
