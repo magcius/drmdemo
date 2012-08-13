@@ -14,6 +14,10 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include <cairo.h>
+#include <librsvg/rsvg.h>
+#include <librsvg/rsvg-cairo.h>
+
 int
 main (int argc, char **argv)
 {
@@ -117,21 +121,47 @@ main (int argc, char **argv)
 
   /* draw! */
   {
-    int x, y;
-    int stride = create_dumb_buffer_request.pitch;
+    cairo_surface_t *surface, *craig;
+    cairo_t *cr;
+    RsvgHandle *tiger_handle;
+    GError *error = NULL;
 
-    /* Draw a red rectangle */
-    for (x = 20; x < 100; x++)
+    surface = cairo_image_surface_create_for_data (mapped_buffer,
+                                                   CAIRO_FORMAT_ARGB32,
+                                                   create_dumb_buffer_request.width,
+                                                   create_dumb_buffer_request.height,
+                                                   create_dumb_buffer_request.pitch);
+    cr = cairo_create (surface);
+
+    cairo_set_source_rgb (cr, 1, 1, 1);
+    cairo_paint (cr);
+
+    cairo_set_source_rgb (cr, 1, 0, 0);
+    cairo_rectangle (cr, 75, 75, 681, 800);
+    cairo_fill (cr);
+
+    craig = cairo_image_surface_create_from_png ("craig.png");
+    cairo_set_source_surface (cr, craig, 0, 0);
+    cairo_rectangle (cr, 50, 50, 681, 800);
+    cairo_fill (cr);
+    cairo_surface_destroy (craig);
+
+    g_type_init ();
+    tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
+    if (error != NULL)
       {
-        for (y = 20; y < 100; y++)
-          {
-            void *ptr = &mapped_buffer[y * stride + x * 4];
-            uint32_t *pixel = ptr;
-
-            /* ARGB */
-            *pixel = 0xFFFF0000;
-          }
+        g_warning ("Error loading tiger.svg: %s", error->message);
+        g_error_free (error);
       }
+    else
+      {
+        cairo_translate (cr, 500, 200);
+        rsvg_handle_render_cairo (tiger_handle, cr);
+        g_object_unref (tiger_handle);
+      }
+
+    cairo_destroy (cr);
+    cairo_surface_destroy (surface);
   }
 
   /* Set the CRTC to output our buffer for five seconds. */
