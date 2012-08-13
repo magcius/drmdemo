@@ -143,6 +143,53 @@ buffer_map (Buffer *buffer)
   return ret;
 }
 
+static void
+draw_on_buffer (Buffer *buffer)
+{
+  cairo_surface_t *surface, *craig;
+  cairo_t *cr;
+  RsvgHandle *tiger_handle;
+  GError *error = NULL;
+
+  surface = cairo_image_surface_create_for_data (buffer->pixels,
+                                                 CAIRO_FORMAT_ARGB32,
+                                                 buffer->width,
+                                                 buffer->height,
+                                                 buffer->stride);
+  cr = cairo_create (surface);
+
+  cairo_set_source_rgb (cr, 1, 1, 1);
+  cairo_paint (cr);
+
+  cairo_set_source_rgb (cr, 1, 0, 0);
+  cairo_rectangle (cr, 75, 75, 681, 800);
+  cairo_fill (cr);
+
+  craig = cairo_image_surface_create_from_png ("craig.png");
+  cairo_translate (cr, 50, 50);
+  cairo_set_source_surface (cr, craig, 0, 0);
+  cairo_rectangle (cr, 0, 0, 681, 800);
+  cairo_fill (cr);
+  cairo_surface_destroy (craig);
+
+  g_type_init ();
+  tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
+  if (error != NULL)
+    {
+      g_warning ("Error loading tiger.svg: %s", error->message);
+      g_error_free (error);
+    }
+  else
+    {
+      cairo_translate (cr, 500, 200);
+      rsvg_handle_render_cairo (tiger_handle, cr);
+      g_object_unref (tiger_handle);
+    }
+
+  cairo_destroy (cr);
+  cairo_surface_destroy (surface);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -206,50 +253,7 @@ main (int argc, char **argv)
     goto out;
 
   /* draw! */
-  {
-    cairo_surface_t *surface, *craig;
-    cairo_t *cr;
-    RsvgHandle *tiger_handle;
-    GError *error = NULL;
-
-    surface = cairo_image_surface_create_for_data (buffer.pixels,
-                                                   CAIRO_FORMAT_ARGB32,
-                                                   buffer.width,
-                                                   buffer.height,
-                                                   buffer.stride);
-    cr = cairo_create (surface);
-
-    cairo_set_source_rgb (cr, 1, 1, 1);
-    cairo_paint (cr);
-
-    cairo_set_source_rgb (cr, 1, 0, 0);
-    cairo_rectangle (cr, 75, 75, 681, 800);
-    cairo_fill (cr);
-
-    craig = cairo_image_surface_create_from_png ("craig.png");
-    cairo_translate (cr, 50, 50);
-    cairo_set_source_surface (cr, craig, 0, 0);
-    cairo_rectangle (cr, 0, 0, 681, 800);
-    cairo_fill (cr);
-    cairo_surface_destroy (craig);
-
-    g_type_init ();
-    tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
-    if (error != NULL)
-      {
-        g_warning ("Error loading tiger.svg: %s", error->message);
-        g_error_free (error);
-      }
-    else
-      {
-        cairo_translate (cr, 500, 200);
-        rsvg_handle_render_cairo (tiger_handle, cr);
-        g_object_unref (tiger_handle);
-      }
-
-    cairo_destroy (cr);
-    cairo_surface_destroy (surface);
-  }
+  draw_on_buffer (&buffer);
 
   /* Set the CRTC to output our buffer for five seconds. */
   if (drmModeSetCrtc (fd, crtc->crtc_id, buffer.id,
