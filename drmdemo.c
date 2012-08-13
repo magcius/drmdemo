@@ -20,6 +20,13 @@
 
 typedef struct {
   int fd;
+  drmModeRes *resources;
+  drmModeConnector *connector;
+  drmModeCrtc *crtc;
+} Device;
+
+typedef struct {
+  Device *device;
 
   unsigned char *pixels;
   uint64_t size;
@@ -30,6 +37,114 @@ typedef struct {
   uint32_t height;
   uint32_t stride;
 } Buffer;
+
+static gboolean
+device_open (Device *device)
+{
+  gboolean ret = FALSE;
+
+  device->fd = open ("/dev/dri/card0", O_RDWR);
+  if (device->fd < 0)
+    {
+      g_warning ("Unable to open DRI device");
+      goto out;
+    }
+
+  ret = TRUE;
+
+ out:
+  return ret;
+}
+
+static gboolean
+device_find_crtc (Device *device)
+{
+  gboolean ret = FALSE;
+  drmModeRes *resources;
+  drmModeConnector *connector;
+  drmModeEncoder *encoder;
+  drmModeCrtc *crtc;
+  int i;
+
+  resources = drmModeGetResources (device->fd);
+
+  /* Find the first active connector to display on. */
+  for (i = 0; i < resources->count_connectors; i++)
+    {
+      connector = drmModeGetConnector (device->fd,
+                                       resources->connectors[i]);
+      if (connector == NULL)
+        continue;
+
+      if (connector->connection == DRM_MODE_CONNECTED &&
+          connector->count_modes > 0)
+        break;
+
+      drmModeFreeConnector(connector);
+    }
+
+  if (i == resources->count_connectors)
+    {
+      g_warning ("Could not find an active connector");
+      goto out;
+    }
+
+  /* Find an associated encoder for that connector. */
+  encoder = drmModeGetEncoder (device->fd, connector->encoder_id);
+
+  /* Now grab the CRTC for that encoder. */
+  crtc = drmModeGetCrtc (device->fd, encoder->crtc_id);
+
+  device->resources = resources;
+  device->connector = connector;
+  device->crtc = crtc;
+
+  ret = TRUE;
+
+ out:
+  return ret;
+}
+
+static gboolean
+device_show_buffer (Device *device,
+                    int buffer_id,
+                    int x,
+                    int y)
+{
+  gboolean ret = FALSE;
+
+  if (drmModeSetCrtc (device->fd,
+                      device->crtc->crtc_id,
+                      buffer_id,
+                      x, y,
+                      &device->connector->connector_id, 1,
+                      &device->crtc->mode) != 0)
+    {
+      g_warning ("Could not set CRTC to display buffer %u: %m", buffer_id);
+      goto out;
+    }
+
+  ret = TRUE;
+
+ out:
+  return ret;
+}
+
+static void
+device_free (Device *device)
+{
+  if (device->resources != NULL)
+    drmModeFreeResources (device->resources);
+
+  if (device->connector != NULL)
+    drmModeFreeConnector (device->connector);
+
+  if (device->crtc != NULL)
+    drmModeFreeCrtc (device->crtc);
+
+  if (device->fd > 0)
+    close (device->fd);
+}
 
 static gboolean
 buffer_new (Buffer *buffer)
@@ -44,7 +159,7 @@ buffer_new (Buffer *buffer)
   create_dumb_buffer_request.bpp = 32;
   create_dumb_buffer_request.flags = 0;
 
-  if (drmIoctl (buffer->fd, DRM_IOCTL_MODE_CREATE_DUMB,
+  if (drmIoctl (buffer->device->fd, DRM_IOCTL_MODE_CREATE_DUMB,
                 &create_dumb_buffer_request) < 0)
     {
       g_warning ("Could not allocate frame buffer %m");
@@ -56,7 +171,7 @@ buffer_new (Buffer *buffer)
   buffer->stride = create_dumb_buffer_request.pitch;
 
   /* Create the frame buffer from the card buffer object. */
-  if (drmModeAddFB (buffer->fd,
+  if (drmModeAddFB (buffer->device->fd,
                     buffer->width,
                     buffer->height,
                     24, /* depth */
@@ -87,7 +202,7 @@ buffer_free (Buffer *buffer)
 
   /* Destroy the framebuffer. */
   if (buffer->id != 0)
-    drmModeRmFB (buffer->fd, buffer->id);
+    drmModeRmFB (buffer->device->fd, buffer->id);
 
   /* Destroy the buffer object on the card. */
 
@@ -96,7 +211,7 @@ buffer_free (Buffer *buffer)
       memset (&destroy_dumb_buffer_request, 0, sizeof (struct drm_mode_map_dumb));
       destroy_dumb_buffer_request.handle = buffer->handle;
 
-      if (drmIoctl (buffer->fd,
+      if (drmIoctl (buffer->device->fd,
                     DRM_IOCTL_MODE_DESTROY_DUMB,
                     &destroy_dumb_buffer_request) < 0)
         {
@@ -119,7 +234,7 @@ buffer_map (Buffer *buffer)
 
   memset (&map_dumb_buffer_request, 0, sizeof (struct drm_mode_map_dumb));
   map_dumb_buffer_request.handle = buffer->handle;
-  if (drmIoctl (buffer->fd,
+  if (drmIoctl (buffer->device->fd,
                 DRM_IOCTL_MODE_MAP_DUMB,
                 &map_dumb_buffer_request) < 0)
     {
@@ -129,7 +244,7 @@ buffer_map (Buffer *buffer)
 
   buffer->pixels = mmap (0, buffer->size,
                          PROT_READ | PROT_WRITE, MAP_SHARED,
-                         buffer->fd, map_dumb_buffer_request.offset);
+                         buffer->device->fd, map_dumb_buffer_request.offset);
 
   if (buffer->pixels == MAP_FAILED)
     {
@@ -193,61 +308,27 @@ draw_on_buffer (Buffer *buffer)
 int
 main (int argc, char **argv)
 {
-  int i;
-  int fd;
-  drmModeRes *resources = NULL;
-  drmModeConnector *connector = NULL;
-  drmModeEncoder *encoder = NULL;
-  drmModeCrtc *crtc = NULL;
   Buffer buffer;
+  Device device;
   int ret = 1;
 
   memset (&buffer, 0, sizeof (Buffer));
+  memset (&device, 0, sizeof (Device));
 
-  fd = open ("/dev/dri/card0", O_RDWR);
-  if (fd < 0)
-    {
-      g_warning ("Unable to open DRI device");
-      goto out;
-    }
+  if (!device_open (&device))
+    goto out;
 
-  buffer.fd = fd;
+  if (!device_find_crtc (&device))
+    goto out;
 
-  resources = drmModeGetResources (fd);
-
-  /* Find the first active connector to display on. */
-  for (i = 0; i < resources->count_connectors; i++)
-    {
-      connector = drmModeGetConnector (fd,
-                                       resources->connectors[i]);
-      if (connector == NULL)
-        continue;
-
-      if (connector->connection == DRM_MODE_CONNECTED &&
-          connector->count_modes > 0)
-        break;
-
-      drmModeFreeConnector(connector);
-    }
-
-  if (i == resources->count_connectors)
-    {
-      g_warning ("Could not find an active connector");
-      goto out;
-    }
-
-  /* Find the associated encoder for that connector. */
-  encoder = drmModeGetEncoder (fd, connector->encoder_id);
-
-  /* Now grab the CRTC for that encoder. */
-  crtc = drmModeGetCrtc (fd, encoder->crtc_id);
+  buffer.device = &device;
 
   /* Use the current resolution of the card. */
-  buffer.width = crtc->mode.hdisplay;
-  buffer.height = crtc->mode.vdisplay;
+  buffer.width = device.crtc->mode.hdisplay;
+  buffer.height = device.crtc->mode.vdisplay;
 
   if (!buffer_new (&buffer))
-    goto out_nocleanup;
+    goto out;
 
   if (!buffer_map (&buffer))
     goto out;
@@ -255,28 +336,17 @@ main (int argc, char **argv)
   /* draw! */
   draw_on_buffer (&buffer);
 
-  /* Set the CRTC to output our buffer for five seconds. */
-  if (drmModeSetCrtc (fd, crtc->crtc_id, buffer.id,
-                      0, 0,
-                      &connector->connector_id, 1,
-                      &crtc->mode) != 0)
+  if (!device_show_buffer (&device, buffer.id, 0, 0))
     {
-      g_warning ("Could not set CRTC to display our buffer %m");
+      g_warning ("Could not show our buffer");
       goto out;
     }
 
   sleep (5);
 
-  /* Set the CRTC back to the buffer it was displaying before. */
-  if (drmModeSetCrtc (fd,
-                      crtc->crtc_id,
-                      crtc->buffer_id,
-                      crtc->x,
-                      crtc->y,
-                      &connector->connector_id, 1,
-                      &crtc->mode) < 0)
+  if (!device_show_buffer (&device, device.crtc->buffer_id, device.crtc->x, device.crtc->y))
     {
-      g_warning ("Could not set CRTC to display previous buffer %m");
+      g_warning ("Could not show previous buffer");
       goto out;
     }
 
@@ -285,19 +355,6 @@ main (int argc, char **argv)
 
  out:
   buffer_free (&buffer);
-
- out_nocleanup:
-  if (crtc != NULL)
-    drmModeFreeCrtc (crtc);
-
-  if (encoder != NULL)
-    drmModeFreeEncoder (encoder);
-
-  if (connector != NULL)
-    drmModeFreeConnector (connector);
-
-  if (resources != NULL)
-    drmModeFreeResources (resources);
-
+  device_free (&device);
   return ret;
 }
