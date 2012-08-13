@@ -287,7 +287,6 @@ draw_on_buffer (Buffer *buffer)
   cairo_fill (cr);
   cairo_surface_destroy (craig);
 
-  g_type_init ();
   tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
   if (error != NULL)
     {
@@ -310,7 +309,12 @@ main (int argc, char **argv)
 {
   Buffer buffer;
   Device device;
+  GMainLoop *mainloop;
   int ret = 1;
+
+  g_type_init ();
+
+  mainloop = g_main_loop_new (NULL, FALSE);
 
   memset (&buffer, 0, sizeof (Buffer));
   memset (&device, 0, sizeof (Device));
@@ -342,7 +346,8 @@ main (int argc, char **argv)
       goto out;
     }
 
-  sleep (5);
+  g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
+  g_main_loop_run (mainloop);
 
   if (!device_show_buffer (&device, device.crtc->buffer_id, device.crtc->x, device.crtc->y))
     {
