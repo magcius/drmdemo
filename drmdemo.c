@@ -177,6 +177,7 @@ main (int argc, char **argv)
     }
 
   /* Do the necessary cleanup. */
+  ret = 0;
 
  munmap:
   /* Unmap the buffer. */
