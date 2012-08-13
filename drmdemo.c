@@ -20,10 +20,10 @@ main (int argc, char **argv)
   int i;
   int fd;
   uint32_t buffer_id;
-  drmModeRes *resources;
-  drmModeConnector *connector;
-  drmModeEncoder *encoder;
-  drmModeCrtc *crtc;
+  drmModeRes *resources = NULL;
+  drmModeConnector *connector = NULL;
+  drmModeEncoder *encoder = NULL;
+  drmModeCrtc *crtc = NULL;
   struct drm_mode_create_dumb create_dumb_buffer_request;
   struct drm_mode_destroy_dumb destroy_dumb_buffer_request;
   struct drm_mode_map_dumb map_dumb_buffer_request;
@@ -183,5 +183,18 @@ main (int argc, char **argv)
     }
 
  out:
+
+  if (crtc != NULL)
+    drmModeFreeCrtc (crtc);
+
+  if (encoder != NULL)
+    drmModeFreeEncoder (encoder);
+
+  if (connector != NULL)
+    drmModeFreeConnector (connector);
+
+  if (resources != NULL)
+    drmModeFreeResources (resources);
+
   return ret;
 }
