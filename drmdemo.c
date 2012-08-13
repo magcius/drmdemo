@@ -158,8 +158,9 @@ main (int argc, char **argv)
     cairo_fill (cr);
 
     craig = cairo_image_surface_create_from_png ("craig.png");
+    cairo_translate (cr, 50, 50);
     cairo_set_source_surface (cr, craig, 0, 0);
-    cairo_rectangle (cr, 50, 50, 681, 800);
+    cairo_rectangle (cr, 0, 0, 681, 800);
     cairo_fill (cr);
     cairo_surface_destroy (craig);
 
