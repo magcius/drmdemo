@@ -21,13 +21,22 @@
 #include "device.c"
 #include "buffer.c"
 
+typedef struct {
+  Device *device;
+  Buffer *buffer;
+
+  int time;
+} AppData;
+
 static void
-draw_on_buffer (Buffer *buffer)
+draw_on_buffer (AppData *appdata)
 {
   cairo_surface_t *surface, *craig;
   cairo_t *cr;
   RsvgHandle *tiger_handle;
   GError *error = NULL;
+
+  Buffer *buffer = appdata->buffer;
 
   surface = cairo_image_surface_create_for_data (buffer->pixels,
                                                  CAIRO_FORMAT_ARGB32,
@@ -58,13 +67,15 @@ draw_on_buffer (Buffer *buffer)
     }
   else
     {
-      cairo_translate (cr, 500, 200);
+      cairo_translate (cr, 500 + 10 * appdata->time, 200);
       rsvg_handle_render_cairo (tiger_handle, cr);
       g_object_unref (tiger_handle);
     }
 
   cairo_destroy (cr);
   cairo_surface_destroy (surface);
+
+  ++appdata->time;
 }
 
 int
@@ -72,6 +83,7 @@ main (int argc, char **argv)
 {
   Buffer buffer;
   Device device;
+  AppData appdata;
   GMainLoop *mainloop;
   int ret = 1;
 
@@ -79,8 +91,12 @@ main (int argc, char **argv)
 
   mainloop = g_main_loop_new (NULL, FALSE);
 
+  memset (&appdata, 0, sizeof (Buffer));
   memset (&buffer, 0, sizeof (Buffer));
   memset (&device, 0, sizeof (Device));
+
+  appdata.buffer = &buffer;
+  appdata.device = &device;
 
   if (!device_open (&device))
     goto out;
@@ -100,15 +116,13 @@ main (int argc, char **argv)
   if (!buffer_map (&buffer))
     goto out;
 
-  /* draw! */
-  draw_on_buffer (&buffer);
-
   if (!device_show_buffer (&device, buffer.id, 0, 0))
     {
       g_warning ("Could not show our buffer");
       goto out;
     }
 
+  g_idle_add ((GSourceFunc) draw_on_buffer, &appdata);
   g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
   g_main_loop_run (mainloop);
 
