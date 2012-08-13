@@ -18,12 +18,22 @@
 #include <librsvg/rsvg.h>
 #include <librsvg/rsvg-cairo.h>
 
+typedef struct {
+  unsigned char *pixels;
+  uint64_t size;
+
+  uint32_t id;
+  uint32_t handle;
+  uint32_t width;
+  uint32_t height;
+  uint32_t stride;
+} Buffer;
+
 int
 main (int argc, char **argv)
 {
   int i;
   int fd;
-  uint32_t buffer_id;
   drmModeRes *resources = NULL;
   drmModeConnector *connector = NULL;
   drmModeEncoder *encoder = NULL;
@@ -31,7 +41,7 @@ main (int argc, char **argv)
   struct drm_mode_create_dumb create_dumb_buffer_request;
   struct drm_mode_destroy_dumb destroy_dumb_buffer_request;
   struct drm_mode_map_dumb map_dumb_buffer_request;
-  unsigned char *mapped_buffer;
+  Buffer buffer;
   int ret = 1;
 
   fd = open ("/dev/dri/card0", O_RDWR);
@@ -74,8 +84,11 @@ main (int argc, char **argv)
   memset (&create_dumb_buffer_request, 0, sizeof (struct drm_mode_create_dumb));
 
   /* Use the current resolution of the card. */
-  create_dumb_buffer_request.width = crtc->mode.hdisplay;
-  create_dumb_buffer_request.height = crtc->mode.vdisplay;
+  buffer.width = crtc->mode.hdisplay;
+  buffer.height = crtc->mode.vdisplay;
+
+  create_dumb_buffer_request.width = buffer.width;
+  create_dumb_buffer_request.height = buffer.height;
   create_dumb_buffer_request.bpp = 32;
   create_dumb_buffer_request.flags = 0;
 
@@ -86,22 +99,26 @@ main (int argc, char **argv)
       goto out;
     }
 
+  buffer.size = create_dumb_buffer_request.size;
+  buffer.handle = create_dumb_buffer_request.handle;
+  buffer.stride = create_dumb_buffer_request.pitch;
+
   /* Create the frame buffer from the card buffer object. */
   if (drmModeAddFB (fd,
-                    create_dumb_buffer_request.width,
-                    create_dumb_buffer_request.height,
+                    buffer.width,
+                    buffer.height,
                     24, /* depth */
-                    create_dumb_buffer_request.bpp,
-                    create_dumb_buffer_request.pitch,
-                    create_dumb_buffer_request.handle,
-                    &buffer_id) != 0)
+                    32, /* bpp */
+                    buffer.stride,
+                    buffer.handle,
+                    &buffer.id) != 0)
     {
       g_warning ("Could not set up frame buffer %m");
       goto out;
     }
 
   memset (&map_dumb_buffer_request, 0, sizeof (struct drm_mode_map_dumb));
-  map_dumb_buffer_request.handle = create_dumb_buffer_request.handle;
+  map_dumb_buffer_request.handle = buffer.handle;
   if (drmIoctl (fd, DRM_IOCTL_MODE_MAP_DUMB,
                 &map_dumb_buffer_request) < 0)
     {
@@ -109,11 +126,11 @@ main (int argc, char **argv)
       goto destroy_buffer;
     }
 
-  mapped_buffer = mmap (0, create_dumb_buffer_request.size,
+  buffer.pixels = mmap (0, buffer.size,
                         PROT_READ | PROT_WRITE, MAP_SHARED,
                         fd, map_dumb_buffer_request.offset);
 
-  if (mapped_buffer == MAP_FAILED)
+  if (buffer.pixels == MAP_FAILED)
     {
       g_warning ("Could not mmap buffer %m");
       goto rm_fb;
@@ -126,11 +143,11 @@ main (int argc, char **argv)
     RsvgHandle *tiger_handle;
     GError *error = NULL;
 
-    surface = cairo_image_surface_create_for_data (mapped_buffer,
+    surface = cairo_image_surface_create_for_data (buffer.pixels,
                                                    CAIRO_FORMAT_ARGB32,
-                                                   create_dumb_buffer_request.width,
-                                                   create_dumb_buffer_request.height,
-                                                   create_dumb_buffer_request.pitch);
+                                                   buffer.width,
+                                                   buffer.height,
+                                                   buffer.stride);
     cr = cairo_create (surface);
 
     cairo_set_source_rgb (cr, 1, 1, 1);
@@ -165,7 +182,7 @@ main (int argc, char **argv)
   }
 
   /* Set the CRTC to output our buffer for five seconds. */
-  if (drmModeSetCrtc (fd, crtc->crtc_id, buffer_id,
+  if (drmModeSetCrtc (fd, crtc->crtc_id, buffer.id,
                       0, 0,
                       &connector->connector_id, 1,
                       &crtc->mode) != 0)
@@ -194,16 +211,16 @@ main (int argc, char **argv)
 
  munmap:
   /* Unmap the buffer. */
-  munmap (mapped_buffer, create_dumb_buffer_request.size);
+  munmap (buffer.pixels, buffer.size);
 
  rm_fb:
   /* Destroy the framebuffer. */
-  drmModeRmFB (fd, buffer_id);
+  drmModeRmFB (fd, buffer.id);
 
  destroy_buffer:
   /* Destroy the buffer object on the card. */
   memset (&destroy_dumb_buffer_request, 0, sizeof (struct drm_mode_map_dumb));
-  destroy_dumb_buffer_request.handle = create_dumb_buffer_request.handle;
+  destroy_dumb_buffer_request.handle = buffer.handle;
 
   if (drmIoctl (fd,
                 DRM_IOCTL_MODE_DESTROY_DUMB,
