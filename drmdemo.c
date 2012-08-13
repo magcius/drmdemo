@@ -191,6 +191,13 @@ main (int argc, char **argv)
   memset (&destroy_dumb_buffer_request, 0, sizeof (struct drm_mode_map_dumb));
   destroy_dumb_buffer_request.handle = create_dumb_buffer_request.handle;
 
+  if (drmIoctl (fd,
+                DRM_IOCTL_MODE_DESTROY_DUMB,
+                &destroy_dumb_buffer_request) < 0)
+    {
+      g_warning ("Could not destroy buffer %m");
+    }
+
  out:
   return ret;
 }
