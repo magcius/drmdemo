@@ -60,25 +60,8 @@ main (int argc, char **argv)
       goto out;
     }
 
-  /* Find an associated encoder for that connector. */
-  for (i = 0; i < resources->count_encoders; i++)
-    {
-      encoder = drmModeGetEncoder (fd, resources->encoders[i]);
-
-      if (encoder == NULL)
-        continue;
-
-      if (encoder->encoder_id == connector->encoder_id)
-        break;
-
-      drmModeFreeEncoder (encoder);
-    }
-
-  if (i == resources->count_encoders)
-    {
-      g_warning ("Could not find associated encoder");
-      goto out;
-    }
+  /* Find the associated encoder for that connector. */
+  encoder = drmModeGetEncoder (fd, connector->encoder_id);
 
   /* Now grab the CRTC for that encoder. */
   crtc = drmModeGetCrtc (fd, encoder->crtc_id);
