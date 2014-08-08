@@ -16,7 +16,6 @@
 
 #include <cairo.h>
 #include <librsvg/rsvg.h>
-#include <librsvg/rsvg-cairo.h>
 
 #include "device.c"
 #include "buffer.c"
@@ -106,8 +105,6 @@ main (int argc, char **argv)
   AppData appdata;
   GMainLoop *mainloop;
   int ret = 1;
-
-  g_type_init ();
 
   mainloop = g_main_loop_new (NULL, FALSE);
 
