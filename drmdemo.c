@@ -28,6 +28,9 @@ typedef struct {
 
   cairo_surface_t *surface;
   cairo_t *cr;
+
+  cairo_surface_t *craig;
+  RsvgHandle *tiger;
 } AppData;
 
 static void
@@ -55,10 +58,7 @@ static gboolean
 draw_on_buffer (gpointer user_data)
 {
   AppData *appdata = user_data;
-  cairo_surface_t *craig;
   cairo_t *cr = appdata->cr;
-  RsvgHandle *tiger_handle;
-  GError *error = NULL;
 
   cairo_save (cr);
 
@@ -71,25 +71,13 @@ draw_on_buffer (gpointer user_data)
   cairo_rectangle (cr, 75, 75, 681, 800);
   cairo_fill (cr);
 
-  craig = cairo_image_surface_create_from_png ("craig.png");
   cairo_translate (cr, 50, 50);
-  cairo_set_source_surface (cr, craig, 0, 0);
+  cairo_set_source_surface (cr, appdata->craig, 0, 0);
   cairo_rectangle (cr, 0, 0, 681, 800);
   cairo_fill (cr);
-  cairo_surface_destroy (craig);
 
-  tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
-  if (error != NULL)
-    {
-      g_warning ("Error loading tiger.svg: %s", error->message);
-      g_error_free (error);
-    }
-  else
-    {
-      cairo_translate (cr, 500 + 10 * appdata->time, 200);
-      rsvg_handle_render_cairo (tiger_handle, cr);
-      g_object_unref (tiger_handle);
-    }
+  cairo_translate (cr, 500 + 10 * appdata->time, 200);
+  rsvg_handle_render_cairo (appdata->tiger, cr);
 
   swap_buffer (appdata);
 
@@ -107,6 +95,7 @@ main (int argc, char **argv)
   Device device;
   AppData appdata;
   GMainLoop *mainloop;
+  GError *error = NULL;
   int ret = 1;
 
   mainloop = g_main_loop_new (NULL, FALSE);
@@ -143,6 +132,16 @@ main (int argc, char **argv)
                                                          buffer.stride);
   appdata.cr = cairo_create (appdata.surface);
 
+  appdata.craig = cairo_image_surface_create_from_png ("craig.png");
+
+  appdata.tiger = rsvg_handle_new_from_file ("tiger.svg", &error);
+  if (error != NULL)
+    {
+      g_warning ("Error loading tiger.svg: %s", error->message);
+      g_error_free (error);
+      goto out;
+    }
+
   g_idle_add (draw_on_buffer, &appdata);
   g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
   g_main_loop_run (mainloop);
@@ -159,6 +158,9 @@ main (int argc, char **argv)
  out:
   buffer_free (&buffer);
   device_free (&device);
+
+  cairo_surface_destroy (appdata.craig);
+  g_object_unref (appdata.tiger);
 
   cairo_destroy (appdata.cr);
   cairo_surface_destroy (appdata.surface);
