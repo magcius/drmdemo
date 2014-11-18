@@ -35,8 +35,6 @@ draw_on_buffer (gpointer user_data)
   AppData *appdata = user_data;
   cairo_surface_t *craig;
   cairo_t *cr = appdata->cr;
-  RsvgHandle *tiger_handle;
-  GError *error = NULL;
 
   cairo_save (cr);
 
