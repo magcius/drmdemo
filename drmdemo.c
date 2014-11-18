@@ -30,27 +30,6 @@ typedef struct {
   cairo_t *cr;
 } AppData;
 
-static void
-set_up_for_buffer (AppData *appdata)
-{
-  Device *device = appdata->device;
-  int ypos = (appdata->time % 2 == 0) ? 0 : device->crtc->mode.vdisplay;
-  cairo_translate (appdata->cr, 0, ypos);
-  cairo_rectangle (appdata->cr, 0, 0, device->crtc->mode.hdisplay, device->crtc->mode.vdisplay);
-  cairo_clip (appdata->cr);
-}
-
-static void
-swap_buffer (AppData *appdata)
-{
-  Device *device = appdata->device;
-  Buffer *buffer = appdata->buffer;
-  int ypos = (appdata->time % 2 == 0) ? 0 : device->crtc->mode.vdisplay;
-
-  if (!device_show_buffer (device, buffer->id, 0, ypos))
-    g_warning ("Could not show our buffer");
-}
-
 static gboolean
 draw_on_buffer (gpointer user_data)
 {
@@ -61,8 +40,6 @@ draw_on_buffer (gpointer user_data)
   GError *error = NULL;
 
   cairo_save (cr);
-
-  set_up_for_buffer (appdata);
 
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
@@ -90,8 +67,6 @@ draw_on_buffer (gpointer user_data)
       rsvg_handle_render_cairo (tiger_handle, cr);
       g_object_unref (tiger_handle);
     }
-
-  swap_buffer (appdata);
 
   cairo_restore (cr);
 
@@ -128,13 +103,19 @@ main (int argc, char **argv)
 
   /* Use the current resolution of the card. */
   buffer.width = device.crtc->mode.hdisplay;
-  buffer.height = device.crtc->mode.vdisplay * 2;
+  buffer.height = device.crtc->mode.vdisplay;
 
   if (!buffer_new (&buffer))
     goto out;
 
   if (!buffer_map (&buffer))
     goto out;
+
+  if (!device_show_buffer (&device, buffer.id, 0, 0))
+    {
+      g_warning ("Could not show our buffer");
+      goto out;
+    }
 
   appdata.surface = cairo_image_surface_create_for_data (buffer.pixels,
                                                          CAIRO_FORMAT_ARGB32,
