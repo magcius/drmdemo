@@ -15,7 +15,6 @@
 #include <xf86drmMode.h>
 
 #include <cairo.h>
-#include <librsvg/rsvg.h>
 
 #include "device.c"
 #include "buffer.c"
@@ -44,6 +43,8 @@ draw_on_buffer (gpointer user_data)
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
 
+  cairo_translate (cr, 500 + 10 * appdata->time, 200);
+
   cairo_set_source_rgb (cr, 1, 0, 0);
   cairo_rectangle (cr, 75, 75, 681, 800);
   cairo_fill (cr);
@@ -54,19 +55,6 @@ draw_on_buffer (gpointer user_data)
   cairo_rectangle (cr, 0, 0, 681, 800);
   cairo_fill (cr);
   cairo_surface_destroy (craig);
-
-  tiger_handle = rsvg_handle_new_from_file ("tiger.svg", &error);
-  if (error != NULL)
-    {
-      g_warning ("Error loading tiger.svg: %s", error->message);
-      g_error_free (error);
-    }
-  else
-    {
-      cairo_translate (cr, 500 + 10 * appdata->time, 200);
-      rsvg_handle_render_cairo (tiger_handle, cr);
-      g_object_unref (tiger_handle);
-    }
 
   cairo_restore (cr);
 
