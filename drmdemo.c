@@ -51,9 +51,10 @@ swap_buffer (AppData *appdata)
     g_warning ("Could not show our buffer");
 }
 
-static void
-draw_on_buffer (AppData *appdata)
+static gboolean
+draw_on_buffer (gpointer user_data)
 {
+  AppData *appdata = user_data;
   cairo_surface_t *craig;
   cairo_t *cr = appdata->cr;
   RsvgHandle *tiger_handle;
@@ -95,6 +96,8 @@ draw_on_buffer (AppData *appdata)
   cairo_restore (cr);
 
   ++appdata->time;
+
+  return G_SOURCE_CONTINUE;
 }
 
 int
@@ -140,7 +143,7 @@ main (int argc, char **argv)
                                                          buffer.stride);
   appdata.cr = cairo_create (appdata.surface);
 
-  g_idle_add ((GSourceFunc) draw_on_buffer, &appdata);
+  g_idle_add (draw_on_buffer, &appdata);
   g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
   g_main_loop_run (mainloop);
 
