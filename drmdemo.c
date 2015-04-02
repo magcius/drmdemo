@@ -67,6 +67,7 @@ draw_on_buffer (gpointer user_data)
 
   set_up_for_buffer (appdata, &cr);
 
+  cairo_save (cr);
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
 
@@ -81,10 +82,11 @@ draw_on_buffer (gpointer user_data)
   /* rsvg_handle_render_cairo (appdata->tiger, cr); */
   /* cairo_translate (cr, appdata->x, 200); */
 
-  cairo_translate (cr, 50, 50);
+  cairo_translate (cr, appdata->x, 200);
   cairo_set_source_surface (cr, appdata->craig, 0, 0);
   cairo_rectangle (cr, 0, 0, 681, 800);
   cairo_fill (cr);
+  cairo_restore (cr);
 
   swap_buffer (appdata);
 
