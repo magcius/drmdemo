@@ -1,6 +1,7 @@
 /* -*- mode: c; c-basic-offset: 2 -*- */
 
 #include <glib.h>
+#include <glib-unix.h>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -34,7 +35,6 @@ typedef struct {
 
   int time;
   int x, dir;
-  int showing_buf;
 
   cairo_surface_t *craig;
   RsvgHandle *tiger;
@@ -51,18 +51,13 @@ swap_buffer (AppData *appdata)
 {
   Device *device = appdata->device;
   Buffer *buffer = &appdata->appbuf[appdata->curbuf].buffer;
-  if (appdata->showing_buf)
-    device_page_flip (device, buffer->id);
-  else
-    device_show_buffer (device, buffer->id, 0, 0);
-  appdata->showing_buf = 1;
+  device_page_flip (device, buffer->id, appdata);
   appdata->curbuf = !appdata->curbuf;
 }
 
-static gboolean
-draw_on_buffer (gpointer user_data)
+static void
+step (AppData *appdata)
 {
-  AppData *appdata = user_data;
   cairo_t *cr;
 
   set_up_for_buffer (appdata, &cr);
@@ -91,8 +86,6 @@ draw_on_buffer (gpointer user_data)
   swap_buffer (appdata);
 
   ++appdata->time;
-
-  return G_SOURCE_CONTINUE;
 }
 
 static gboolean
@@ -111,6 +104,24 @@ make_appbuf (AppBuf *appbuf, Device *device, int w, int h)
                                                          appbuf->buffer.stride);
   appbuf->cr = cairo_create (appbuf->surface);
   return TRUE;
+}
+
+static void
+handle_page_flip (int fd, unsigned frame, unsigned sec, unsigned usec, void *data)
+{
+  AppData *appdata = data;
+  step (appdata);
+}
+
+static gboolean
+handle_drm_event (int fd, GIOCondition cond, gpointer user_data)
+{
+  drmEventContext evctx = {
+    .version = DRM_EVENT_CONTEXT_VERSION,
+    .page_flip_handler = handle_page_flip,
+  };
+  drmHandleEvent (fd, &evctx);
+  return G_SOURCE_CONTINUE;
 }
 
 int
@@ -149,7 +160,9 @@ main (int argc, char **argv)
 
   appdata.dir = 1;
 
-  g_idle_add (draw_on_buffer, &appdata);
+  g_unix_fd_add (device.fd, G_IO_IN, handle_drm_event, &appdata);
+  device_show_buffer (&device, appdata.appbuf[0].buffer.id, 0, 0);
+  step (&appdata);
   g_main_loop_run (mainloop);
 
   if (!device_show_buffer (&device, device.crtc->buffer_id, device.crtc->x, device.crtc->y))

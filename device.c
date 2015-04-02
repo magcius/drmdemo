@@ -101,11 +101,12 @@ device_show_buffer (Device *device,
 
 static void
 device_page_flip (Device *device,
-                  int buffer_id)
+                  int buffer_id,
+                  void *data)
 {
   drmModePageFlip (device->fd,
                    device->crtc->crtc_id,
-                   buffer_id, 0, 0);
+                   buffer_id, DRM_MODE_PAGE_FLIP_EVENT, data);
 }
 
 static void
