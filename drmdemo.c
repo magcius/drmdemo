@@ -27,10 +27,12 @@ typedef struct {
   cairo_t *cr;
 } AppBuf;
 
+#define NUM_BUFFERS 10
+
 typedef struct {
   Device *device;
 
-  AppBuf appbuf[2];
+  AppBuf appbuf[NUM_BUFFERS];
   int curbuf;
 
   int time;
@@ -52,7 +54,9 @@ swap_buffer (AppData *appdata)
   Device *device = appdata->device;
   Buffer *buffer = &appdata->appbuf[appdata->curbuf].buffer;
   device_page_flip (device, buffer->id, appdata);
-  appdata->curbuf = !appdata->curbuf;
+  appdata->curbuf++;
+  if (appdata->curbuf >= NUM_BUFFERS)
+    appdata->curbuf = 0;
 }
 
 static void
@@ -106,6 +110,22 @@ make_appbuf (AppBuf *appbuf, Device *device, int w, int h)
   return TRUE;
 }
 
+static gboolean
+make_appbufs (AppData *appdata)
+{
+  int i, w, h;
+
+  /* Use the current resolution of the card. */
+  w = appdata->device->crtc->mode.hdisplay;
+  h = appdata->device->crtc->mode.vdisplay;
+
+  for (i = 0; i < NUM_BUFFERS; i++)
+    if (!make_appbuf (&appdata->appbuf[i], appdata->device, w, h))
+      return FALSE;
+
+  return TRUE;
+}
+
 static void
 handle_page_flip (int fd, unsigned frame, unsigned sec, unsigned usec, void *data)
 {
@@ -132,7 +152,6 @@ main (int argc, char **argv)
   GMainLoop *mainloop;
   /* GError *error = NULL; */
   int ret = 1;
-  int w, h;
 
   mainloop = g_main_loop_new (NULL, FALSE);
 
@@ -147,13 +166,7 @@ main (int argc, char **argv)
   if (!device_find_crtc (&device))
     goto out;
 
-  /* Use the current resolution of the card. */
-  w = device.crtc->mode.hdisplay;
-  h = device.crtc->mode.vdisplay;
-
-  if (!make_appbuf (&appdata.appbuf[0], &device, w, h))
-    goto out;
-  if (!make_appbuf (&appdata.appbuf[1], &device, w, h))
+  if (!make_appbufs (&appdata))
     goto out;
 
   appdata.craig = cairo_image_surface_create_from_png ("craig.png");
