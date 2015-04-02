@@ -34,6 +34,7 @@ typedef struct {
 
   int time;
   int x, dir;
+  int showing_buf;
 
   cairo_surface_t *craig;
   RsvgHandle *tiger;
@@ -50,7 +51,11 @@ swap_buffer (AppData *appdata)
 {
   Device *device = appdata->device;
   Buffer *buffer = &appdata->appbuf[appdata->curbuf].buffer;
-  device_page_flip (device, buffer->id);
+  if (appdata->showing_buf)
+    device_page_flip (device, buffer->id);
+  else
+    device_show_buffer (device, buffer->id, 0, 0);
+  appdata->showing_buf = 1;
   appdata->curbuf = !appdata->curbuf;
 }
 
