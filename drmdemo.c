@@ -71,16 +71,16 @@ draw_on_buffer (gpointer user_data)
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
 
-  cairo_set_source_rgb (cr, 1, 0, 0);
-  cairo_rectangle (cr, 75, 75, 681, 800);
-  cairo_fill (cr);
-
   appdata->x += 10 * appdata->dir;
-  if (appdata->x > 1920 || appdata->x < 0)
+  if (appdata->x > 1239 || appdata->x < 0)
     appdata->dir *= -1;
 
   /* rsvg_handle_render_cairo (appdata->tiger, cr); */
   /* cairo_translate (cr, appdata->x, 200); */
+
+  cairo_set_source_rgb (cr, 1, 0, 0);
+  cairo_rectangle (cr, appdata->x - 50, 75, 681, 800);
+  cairo_fill (cr);
 
   cairo_translate (cr, appdata->x, 200);
   cairo_set_source_surface (cr, appdata->craig, 0, 0);
