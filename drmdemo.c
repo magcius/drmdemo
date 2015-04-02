@@ -69,17 +69,17 @@ draw_on_buffer (gpointer user_data)
   cairo_rectangle (cr, 75, 75, 681, 800);
   cairo_fill (cr);
 
-  cairo_translate (cr, 50, 50);
-  cairo_set_source_surface (cr, appdata->craig, 0, 0);
-  cairo_rectangle (cr, 0, 0, 681, 800);
-  cairo_fill (cr);
-
   appdata->x += 10 * appdata->dir;
   if (appdata->x > 1920 || appdata->x < 0)
     appdata->dir *= -1;
 
-  rsvg_handle_render_cairo (appdata->tiger, cr);
-  cairo_translate (cr, appdata->x, 200);
+  /* rsvg_handle_render_cairo (appdata->tiger, cr); */
+  /* cairo_translate (cr, appdata->x, 200); */
+
+  cairo_translate (cr, 50, 50);
+  cairo_set_source_surface (cr, appdata->craig, 0, 0);
+  cairo_rectangle (cr, 0, 0, 681, 800);
+  cairo_fill (cr);
 
   swap_buffer (appdata);
 
@@ -112,7 +112,7 @@ main (int argc, char **argv)
   Device device;
   AppData appdata;
   GMainLoop *mainloop;
-  GError *error = NULL;
+  /* GError *error = NULL; */
   int ret = 1;
   int w, h;
 
@@ -140,14 +140,6 @@ main (int argc, char **argv)
 
   appdata.craig = cairo_image_surface_create_from_png ("craig.png");
 
-  appdata.tiger = rsvg_handle_new_from_file ("tiger.svg", &error);
-  if (error != NULL)
-    {
-      g_warning ("Error loading tiger.svg: %s", error->message);
-      g_error_free (error);
-      goto out;
-    }
-
   appdata.dir = 1;
 
   g_idle_add (draw_on_buffer, &appdata);
@@ -168,7 +160,7 @@ main (int argc, char **argv)
   if (0) buffer_free (NULL);
 
   cairo_surface_destroy (appdata.craig);
-  g_object_unref (appdata.tiger);
+  /* g_object_unref (appdata.tiger); */
 
   return ret;
 }
