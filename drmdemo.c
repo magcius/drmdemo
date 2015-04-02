@@ -21,48 +21,46 @@
 #include "buffer.c"
 
 typedef struct {
-  Device *device;
-  Buffer *buffer;
-
-  int time;
-
+  Buffer buffer;
   cairo_surface_t *surface;
   cairo_t *cr;
+} AppBuf;
+
+typedef struct {
+  Device *device;
+
+  AppBuf appbuf[2];
+  int curbuf;
+
+  int time;
+  int x, dir;
 
   cairo_surface_t *craig;
   RsvgHandle *tiger;
 } AppData;
 
 static void
-set_up_for_buffer (AppData *appdata)
+set_up_for_buffer (AppData *appdata, cairo_t **cr)
 {
-  Device *device = appdata->device;
-  int ypos = (appdata->time % 2 == 0) ? 0 : device->crtc->mode.vdisplay;
-  cairo_translate (appdata->cr, 0, ypos);
-  cairo_rectangle (appdata->cr, 0, 0, device->crtc->mode.hdisplay, device->crtc->mode.vdisplay);
-  cairo_clip (appdata->cr);
+  *cr = appdata->appbuf[appdata->curbuf].cr;
 }
 
 static void
 swap_buffer (AppData *appdata)
 {
   Device *device = appdata->device;
-  Buffer *buffer = appdata->buffer;
-  int ypos = (appdata->time % 2 == 0) ? 0 : device->crtc->mode.vdisplay;
-
-  if (!device_show_buffer (device, buffer->id, 0, ypos))
-    g_warning ("Could not show our buffer");
+  Buffer *buffer = &appdata->appbuf[appdata->curbuf].buffer;
+  device_page_flip (device, buffer->id);
+  appdata->curbuf = !appdata->curbuf;
 }
 
 static gboolean
 draw_on_buffer (gpointer user_data)
 {
   AppData *appdata = user_data;
-  cairo_t *cr = appdata->cr;
+  cairo_t *cr;
 
-  cairo_save (cr);
-
-  set_up_for_buffer (appdata);
+  set_up_for_buffer (appdata, &cr);
 
   cairo_set_source_rgb (cr, 1, 1, 1);
   cairo_paint (cr);
@@ -76,35 +74,53 @@ draw_on_buffer (gpointer user_data)
   cairo_rectangle (cr, 0, 0, 681, 800);
   cairo_fill (cr);
 
-  cairo_translate (cr, 500 + 10 * appdata->time, 200);
+  appdata->x += 10 * appdata->dir;
+  if (appdata->x > 1920 || appdata->x < 0)
+    appdata->dir *= -1;
+
   rsvg_handle_render_cairo (appdata->tiger, cr);
+  cairo_translate (cr, appdata->x, 200);
 
   swap_buffer (appdata);
-
-  cairo_restore (cr);
 
   ++appdata->time;
 
   return G_SOURCE_CONTINUE;
 }
 
+static gboolean
+make_appbuf (AppBuf *appbuf, Device *device, int w, int h)
+{
+  appbuf->buffer.device = device;
+  appbuf->buffer.width = w;
+  appbuf->buffer.height = h;
+  if (!buffer_new (&appbuf->buffer) || !buffer_map(&appbuf->buffer))
+    return FALSE;
+
+  appbuf->surface = cairo_image_surface_create_for_data (appbuf->buffer.pixels,
+                                                         CAIRO_FORMAT_ARGB32,
+                                                         appbuf->buffer.width,
+                                                         appbuf->buffer.height,
+                                                         appbuf->buffer.stride);
+  appbuf->cr = cairo_create (appbuf->surface);
+  return TRUE;
+}
+
 int
 main (int argc, char **argv)
 {
-  Buffer buffer;
   Device device;
   AppData appdata;
   GMainLoop *mainloop;
   GError *error = NULL;
   int ret = 1;
+  int w, h;
 
   mainloop = g_main_loop_new (NULL, FALSE);
 
-  memset (&appdata, 0, sizeof (Buffer));
-  memset (&buffer, 0, sizeof (Buffer));
+  memset (&appdata, 0, sizeof (AppData));
   memset (&device, 0, sizeof (Device));
 
-  appdata.buffer = &buffer;
   appdata.device = &device;
 
   if (!device_open (&device))
@@ -113,24 +129,14 @@ main (int argc, char **argv)
   if (!device_find_crtc (&device))
     goto out;
 
-  buffer.device = &device;
-
   /* Use the current resolution of the card. */
-  buffer.width = device.crtc->mode.hdisplay;
-  buffer.height = device.crtc->mode.vdisplay * 2;
+  w = device.crtc->mode.hdisplay;
+  h = device.crtc->mode.vdisplay;
 
-  if (!buffer_new (&buffer))
+  if (!make_appbuf (&appdata.appbuf[0], &device, w, h))
     goto out;
-
-  if (!buffer_map (&buffer))
+  if (!make_appbuf (&appdata.appbuf[1], &device, w, h))
     goto out;
-
-  appdata.surface = cairo_image_surface_create_for_data (buffer.pixels,
-                                                         CAIRO_FORMAT_ARGB32,
-                                                         buffer.width,
-                                                         buffer.height,
-                                                         buffer.stride);
-  appdata.cr = cairo_create (appdata.surface);
 
   appdata.craig = cairo_image_surface_create_from_png ("craig.png");
 
@@ -142,8 +148,9 @@ main (int argc, char **argv)
       goto out;
     }
 
+  appdata.dir = 1;
+
   g_idle_add (draw_on_buffer, &appdata);
-  g_timeout_add_seconds (5, (GSourceFunc) g_main_loop_quit, mainloop);
   g_main_loop_run (mainloop);
 
   if (!device_show_buffer (&device, device.crtc->buffer_id, device.crtc->x, device.crtc->y))
@@ -156,14 +163,12 @@ main (int argc, char **argv)
   ret = 0;
 
  out:
-  buffer_free (&buffer);
   device_free (&device);
+
+  if (0) buffer_free (NULL);
 
   cairo_surface_destroy (appdata.craig);
   g_object_unref (appdata.tiger);
-
-  cairo_destroy (appdata.cr);
-  cairo_surface_destroy (appdata.surface);
 
   return ret;
 }

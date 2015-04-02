@@ -100,6 +100,15 @@ device_show_buffer (Device *device,
 }
 
 static void
+device_page_flip (Device *device,
+                  int buffer_id)
+{
+  drmModePageFlip (device->fd,
+                   device->crtc->crtc_id,
+                   buffer_id, 0, 0);
+}
+
+static void
 device_free (Device *device)
 {
   if (device->resources != NULL)
