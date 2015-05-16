@@ -110,6 +110,21 @@ device_page_flip (Device *device,
 }
 
 static void
+device_cursor (Device *device,
+               int bo_handle, int x, int y, int w, int h)
+{
+  struct drm_mode_cursor arg = {};
+  arg.flags = DRM_MODE_CURSOR_BO | DRM_MODE_CURSOR_MOVE;
+  arg.crtc_id = device->crtc->crtc_id;
+  arg.x = x;
+  arg.y = y;
+  arg.width = w;
+  arg.height = h;
+  arg.handle = bo_handle;
+  drmIoctl (device->fd, DRM_IOCTL_MODE_CURSOR, &arg);
+}
+
+static void
 device_free (Device *device)
 {
   if (device->resources != NULL)

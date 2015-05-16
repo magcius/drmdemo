@@ -35,6 +35,10 @@ typedef struct {
   AppBuf appbuf[NUM_BUFFERS];
   int curbuf;
 
+  AppBuf cursor[2];
+  int cursor_x, cursor_y, cursor_buf;
+  int cursor_dir_x, cursor_dir_y;
+
   int time;
   int x, dir;
 
@@ -60,6 +64,25 @@ swap_buffer (AppData *appdata)
 }
 
 static void
+step_cursor (AppData *appdata)
+{
+  Buffer *buffer = &appdata->cursor[appdata->cursor_buf].buffer;
+
+  device_cursor (appdata->device,
+                 buffer->handle,
+                 appdata->cursor_x - 32, appdata->cursor_y - 32,
+                 buffer->width, buffer->height);
+
+  appdata->cursor_buf = (appdata->cursor_buf + 1) % 2;
+  appdata->cursor_x += 6 * appdata->cursor_dir_x;
+  appdata->cursor_y += 10 * appdata->cursor_dir_y;
+  if (appdata->cursor_x < 0 || appdata->cursor_x > 1920)
+    appdata->cursor_dir_x *= -1;
+  if (appdata->cursor_y < 0 || appdata->cursor_y > 1080)
+    appdata->cursor_dir_y *= -1;
+}
+
+static void
 step (AppData *appdata)
 {
   cairo_t *cr;
@@ -74,9 +97,6 @@ step (AppData *appdata)
   if (appdata->x > 1239 || appdata->x < 0)
     appdata->dir *= -1;
 
-  /* rsvg_handle_render_cairo (appdata->tiger, cr); */
-  /* cairo_translate (cr, appdata->x, 200); */
-
   cairo_set_source_rgb (cr, 1, 0, 0);
   cairo_rectangle (cr, appdata->x - 50, 75, 681, 800);
   cairo_fill (cr);
@@ -87,7 +107,22 @@ step (AppData *appdata)
   cairo_fill (cr);
   cairo_restore (cr);
 
+  /*
+  cairo_save (cr);
+  cairo_scale (cr, 2, 2);
+  rsvg_handle_render_cairo (appdata->tiger, cr);
+  cairo_restore (cr);
+  */
+
   swap_buffer (appdata);
+
+  step_cursor (appdata);
+  step_cursor (appdata);
+  step_cursor (appdata);
+  step_cursor (appdata);
+  step_cursor (appdata);
+  step_cursor (appdata);
+  step_cursor (appdata);
 
   ++appdata->time;
 }
@@ -144,13 +179,21 @@ handle_drm_event (int fd, GIOCondition cond, gpointer user_data)
   return G_SOURCE_CONTINUE;
 }
 
+static void
+draw_cursor (AppBuf *appbuf, double r, double g, double b)
+{
+  cairo_set_source_rgb (appbuf->cr, r, g, b);
+  cairo_arc (appbuf->cr, 32, 32, 32, 0, 3.14 * 2);
+  cairo_fill (appbuf->cr);
+  cairo_surface_flush (appbuf->surface);
+}
+
 int
 main (int argc, char **argv)
 {
   Device device;
   AppData appdata;
   GMainLoop *mainloop;
-  /* GError *error = NULL; */
   int ret = 1;
 
   mainloop = g_main_loop_new (NULL, FALSE);
@@ -169,8 +212,16 @@ main (int argc, char **argv)
   if (!make_appbufs (&appdata))
     goto out;
 
-  appdata.craig = cairo_image_surface_create_from_png ("craig.png");
+  make_appbuf (&appdata.cursor[0], appdata.device, 64, 64);
+  make_appbuf (&appdata.cursor[1], appdata.device, 64, 64);
+  draw_cursor (&appdata.cursor[0], 1.0, 0.0, 0.5);
+  draw_cursor (&appdata.cursor[1], 0.5, 0.0, 1.0);
 
+  appdata.craig = cairo_image_surface_create_from_png ("craig.png");
+  appdata.tiger = rsvg_handle_new_from_file ("tiger.svg", NULL);
+
+  appdata.cursor_dir_x = 1;
+  appdata.cursor_dir_y = 1;
   appdata.dir = 1;
 
   g_unix_fd_add (device.fd, G_IO_IN, handle_drm_event, &appdata);
@@ -193,7 +244,7 @@ main (int argc, char **argv)
   if (0) buffer_free (NULL);
 
   cairo_surface_destroy (appdata.craig);
-  /* g_object_unref (appdata.tiger); */
+  g_object_unref (appdata.tiger);
 
   return ret;
 }
