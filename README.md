@@ -11,4 +11,4 @@ Coding against the Direct Rendering Manager
     ** (process:14023): WARNING **: Unable to open DRI device
     (process:14023): GLib-GObject-CRITICAL **: g_object_unref: assertion 'G_IS_OBJECT (object)' failed
 
-You need to run ./drmdemo as root - strace will show `open("/dev/dri/card0", O_RDWR)          = -1 EACCES (Permission denied)` 
+Either `/dev/dri/card0` is not available or you need to switch VTs to somewhere X is not running, e.g. Ctrl-Alt-F2.
