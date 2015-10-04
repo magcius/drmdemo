@@ -21,6 +21,10 @@ device_open (Device *device)
 
   ret = TRUE;
 
+  drmVersionPtr version = drmGetVersion (device->fd);
+  g_print ("Driver name: %s\n", version->name);
+  drmFreeVersion (version);
+
  out:
   return ret;
 }
