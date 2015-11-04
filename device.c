@@ -40,6 +40,11 @@ device_find_crtc (Device *device)
   int i;
 
   resources = drmModeGetResources (device->fd);
+  if (resources == NULL)
+    {
+      g_warning ("Unable to get DRI device resources fd=%d: %m", device->fd);
+      goto out;
+    }
 
   /* Find the first active connector to display on. */
   for (i = 0; i < resources->count_connectors; i++)
